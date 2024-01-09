@@ -1,0 +1,35 @@
+{
+  "name": "migraphile",
+  "version": "1.0.0",
+  "main": "dist/migraphile.js",
+  "repository": "https://github.com/amerryma/migraphile.git",
+  "author": "Aaron Merryman <amerryma@asu.edu>",
+  "license": "MIT",
+  "bin": {
+    "migraphile": "dist/migraphile.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "yarn src/migraphile.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/migraphile.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/yargs": "^17.0.32",
+    "@types/node": "18.15.3",
+    "ts-node-dev": "^2.0.0"
+  },
+  "dependencies": {
+    "@graphile/logger": "^0.2.0",
+    "chalk": "^4.0.0",
+    "chokidar": "^3.5.3",
+    "cli-highlight": "^2.1.11",
+    "dotenv": "^16.3.1",
+    "fastq": "^1.16.0",
+    "graphile-migrate": "^1.4.1",
+    "pg": "^8.11.3",
+    "typescript": "^5.3.3"
+  }
+}
