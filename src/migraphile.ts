@@ -257,6 +257,8 @@ const runMigra = async (from: string, to: string): Promise<string> => {
   try {
     const args = [
       'run',
+      '--rm',
+      '-i',
       '--network',
       'host',
       migraImage,
