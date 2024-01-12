@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-misused-promises */
 import path from 'path'
 import net from 'net'
