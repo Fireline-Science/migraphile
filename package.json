@@ -2,8 +2,8 @@
   "name": "migraphile",
   "version": "1.0.0",
   "main": "dist/migraphile.js",
-  "repository": "https://github.com/amerryma/migraphile.git",
-  "author": "Aaron Merryman <amerryma@asu.edu>",
+  "repository": "https://github.com/Fireline-Science/migraphile.git",
+  "author": "Aaron Merryman <aaron@firelinescience.com>",
   "license": "MIT",
   "bin": {
     "migraphile": "dist/migraphile.js"
