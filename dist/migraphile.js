@@ -222,6 +222,8 @@ const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const args = [
             'run',
+            '--rm',
+            '-i',
             '--network',
             'host',
             migraImage,
