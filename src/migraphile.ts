@@ -75,8 +75,13 @@ const EMPTY_MIGRATION_TEXT = '-- Enter migration here\n'
 const COMMAND_DESCRIPTION_TAB_SPACING = ' '.repeat(12)
 const COMMAND_TAB_SPACING = ' '.repeat(8)
 
+const getDbName = (dbUri: string): string => {
+  const url = new URL(dbUri)
+  return url.pathname.slice(1)
+}
+
 const prettyDb = (dbUri: string): string => {
-  const dbName = dbUri.split('/').pop()
+  const dbName = getDbName(dbUri)
 
   if (dbUri === shadowDbUri) {
     return `👻 ${chalk.italic.yellow(dbName)}`
@@ -406,9 +411,7 @@ const ensureDbExists = async (dbConnectionString: string): Promise<boolean> => {
     try {
       // Check if db exists first
       const { rows } = await client.query(
-        `SELECT datname FROM pg_catalog.pg_database WHERE lower(datname) = lower('${dbConnectionString
-          .split('/')
-          .pop()}')`
+        `SELECT datname FROM pg_catalog.pg_database WHERE lower(datname) = lower('${getDbName(dbConnectionString)}')`
       )
       exists = rows.length > 0
     } catch (e) {
@@ -416,7 +419,7 @@ const ensureDbExists = async (dbConnectionString: string): Promise<boolean> => {
     }
 
     if (!exists) {
-      await client.query(`CREATE DATABASE ${dbConnectionString.split('/').pop()}`)
+      await client.query(`CREATE DATABASE ${getDbName(dbConnectionString)}`)
       console.log(`🚀 ${prettyDb(dbConnectionString)} created!`)
       wasCreated = true
     } else {

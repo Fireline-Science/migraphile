@@ -69,8 +69,12 @@ const CURRENT_SQL = chalk_1.default.italic.cyan('current.sql');
 const EMPTY_MIGRATION_TEXT = '-- Enter migration here\n';
 const COMMAND_DESCRIPTION_TAB_SPACING = ' '.repeat(12);
 const COMMAND_TAB_SPACING = ' '.repeat(8);
+const getDbName = (dbUri) => {
+    const url = new URL(dbUri);
+    return url.pathname.slice(1);
+};
 const prettyDb = (dbUri) => {
-    const dbName = dbUri.split('/').pop();
+    const dbName = getDbName(dbUri);
     if (dbUri === shadowDbUri) {
         return `👻 ${chalk_1.default.italic.yellow(dbName)}`;
     }
@@ -351,16 +355,14 @@ const ensureDbExists = (dbConnectionString) => __awaiter(void 0, void 0, void 0,
         let exists = false;
         try {
             // Check if db exists first
-            const { rows } = yield client.query(`SELECT datname FROM pg_catalog.pg_database WHERE lower(datname) = lower('${dbConnectionString
-                .split('/')
-                .pop()}')`);
+            const { rows } = yield client.query(`SELECT datname FROM pg_catalog.pg_database WHERE lower(datname) = lower('${getDbName(dbConnectionString)}')`);
             exists = rows.length > 0;
         }
         catch (e) {
             exists = false;
         }
         if (!exists) {
-            yield client.query(`CREATE DATABASE ${dbConnectionString.split('/').pop()}`);
+            yield client.query(`CREATE DATABASE ${getDbName(dbConnectionString)}`);
             console.log(`🚀 ${prettyDb(dbConnectionString)} created!`);
             wasCreated = true;
         }
