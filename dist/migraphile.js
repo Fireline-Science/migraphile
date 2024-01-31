@@ -61,6 +61,7 @@ const shadowDbUri = process.env.SHADOW_DB_URI;
 const ormDbUri = process.env.ORM_DB_URI;
 const ormName = process.env.ORM_NAME || 'ORM';
 const baselineFile = process.env.BASELINE_FILE;
+const schemas = process.env.SCHEMAS || 'public';
 const CURRENT_FILE_PATH = path_1.default.join(processDir, 'current', '1-current.sql');
 const GRAPHILE_MIGRATE = `💻 ${chalk_1.default.italic.hex('#ff795b')('Graphile Migrate')}`;
 const MIGRA = chalk_1.default.italic.hex('#ff7d00')('Migra');
@@ -223,23 +224,29 @@ const migraImage = 'public.ecr.aws/supabase/migra:3.0.1663481299';
 const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
     console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`);
     let revertSql = '';
+    // Split the schemas string into an array
+    const schemaList = schemas.split(',');
     try {
-        const args = [
-            'run',
-            '--rm',
-            '-i',
-            '--network',
-            'host',
-            migraImage,
-            'migra',
-            from.replace('postgres://', 'postgresql://'),
-            to.replace('postgres://', 'postgresql://'),
-            '--with-privileges',
-            '--unsafe',
-            '--schema=public'
-        ];
-        const proc = (0, child_process_1.spawnSync)('docker', args);
-        revertSql = proc.stdout.toString('utf8');
+        for (const schema of schemaList) {
+            console.log(`🔍 ${MIGRA} → Comparing schema: ${chalk_1.default.bold(schema.trim())}...`);
+            const args = [
+                'run',
+                '--rm',
+                '-i',
+                '--network',
+                'host',
+                migraImage,
+                'migra',
+                from.replace('postgres://', 'postgresql://'),
+                to.replace('postgres://', 'postgresql://'),
+                '--with-privileges',
+                '--unsafe',
+                `--schema=${schema.trim()}` // Use the current schema in the loop
+            ];
+            const proc = (0, child_process_1.spawnSync)('docker', args);
+            // Append the output of each schema to revertSql
+            revertSql += proc.stdout.toString('utf8');
+        }
     }
     catch (error) {
         console.error(`Error running ${MIGRA}:`, error);
@@ -492,6 +499,9 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     between the shadow database and the ${ORM_NAME} database. It can also be used to update
     your local database to the shadow database state including the current migration using
     ${GRAPHILE_MIGRATE}.
+    
+    ${chalk_1.default.bold('Managed schemas:')}
+${schemas.split(',').map((s) => `${COMMAND_TAB_SPACING}* ${s}`).join('\n')}
     
     ${chalk_1.default.bold('root database:')} ${prettyDb(rootDbUri)}
       * This is the database that is used to create other databases.

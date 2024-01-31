@@ -64,6 +64,7 @@ const shadowDbUri = process.env.SHADOW_DB_URI
 const ormDbUri = process.env.ORM_DB_URI
 const ormName = process.env.ORM_NAME || 'ORM'
 const baselineFile = process.env.BASELINE_FILE
+const schemas = process.env.SCHEMAS || 'public'
 
 const CURRENT_FILE_PATH = path.join(processDir, 'current', '1-current.sql')
 
@@ -255,34 +256,41 @@ const graphileSettings: Settings = {
 const migraImage = 'public.ecr.aws/supabase/migra:3.0.1663481299'
 
 const runMigra = async (from: string, to: string): Promise<string> => {
-  console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`)
+  console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`);
 
-  let revertSql = ''
+  let revertSql = '';
+
+  // Split the schemas string into an array
+  const schemaList = schemas.split(',');
 
   try {
-    const args = [
-      'run',
-      '--rm',
-      '-i',
-      '--network',
-      'host',
-      migraImage,
-      'migra',
-      from.replace('postgres://', 'postgresql://'),
-      to.replace('postgres://', 'postgresql://'),
-      '--with-privileges',
-      '--unsafe',
-      '--schema=public'
-    ]
-    const proc = spawnSync('docker', args)
+    for (const schema of schemaList) {
+      console.log(`🔍 ${MIGRA} → Comparing schema: ${chalk.bold(schema.trim())}...`);
+      const args = [
+        'run',
+        '--rm',
+        '-i',
+        '--network',
+        'host',
+        migraImage,
+        'migra',
+        from.replace('postgres://', 'postgresql://'),
+        to.replace('postgres://', 'postgresql://'),
+        '--with-privileges',
+        '--unsafe',
+        `--schema=${schema.trim()}` // Use the current schema in the loop
+      ];
+      const proc = spawnSync('docker', args);
 
-    revertSql = proc.stdout.toString('utf8')
+      // Append the output of each schema to revertSql
+      revertSql += proc.stdout.toString('utf8');
+    }
   } catch (error) {
-    console.error(`Error running ${MIGRA}:`, error)
+    console.error(`Error running ${MIGRA}:`, error);
   }
 
-  return revertSql
-}
+  return revertSql;
+};
 
 const fixDrift = async (): Promise<void> => {
   console.log(`🤔 Looking for drift...`)
@@ -574,6 +582,9 @@ const main = async (): Promise<void> => {
     between the shadow database and the ${ORM_NAME} database. It can also be used to update
     your local database to the shadow database state including the current migration using
     ${GRAPHILE_MIGRATE}.
+    
+    ${chalk.bold('Managed schemas:')}
+${schemas.split(',').map((s) => `${COMMAND_TAB_SPACING}* ${s}`).join('\n')}
     
     ${chalk.bold('root database:')} ${prettyDb(rootDbUri)}
       * This is the database that is used to create other databases.
