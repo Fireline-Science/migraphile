@@ -253,7 +253,7 @@ const graphileSettings: Settings = {
   afterReset: baselineFile || undefined
 }
 
-const migraImage = 'public.ecr.aws/supabase/migra:3.0.1663481299'
+const migraImage = 'us-west2-docker.pkg.dev/disca-scripts/disca/migra:latest'
 
 const runMigra = async (from: string, to: string): Promise<string> => {
   console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`);
@@ -555,7 +555,9 @@ const main = async (): Promise<void> => {
     })
   })
 
-  console.log(`📥 Pulling ${MIGRA} image...`)
+  console.log(`📥 Pulling ${MIGRA} image [${
+    chalk.italic(migraImage)
+  }]...`)
   spawnSync('docker', ['pull', migraImage])
 
   assert(ormDbUri !== undefined, 'ORM_DB_URI is required')

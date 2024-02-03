@@ -220,7 +220,7 @@ const graphileSettings = {
     logger: customLogger,
     afterReset: baselineFile || undefined
 };
-const migraImage = 'public.ecr.aws/supabase/migra:3.0.1663481299';
+const migraImage = 'us-west2-docker.pkg.dev/disca-scripts/disca/migra:latest';
 const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
     console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`);
     let revertSql = '';
@@ -480,7 +480,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
             yield runCommand(command, rest.join(' '));
         }));
     });
-    console.log(`📥 Pulling ${MIGRA} image...`);
+    console.log(`📥 Pulling ${MIGRA} image [${chalk_1.default.italic(migraImage)}]...`);
     (0, child_process_1.spawnSync)('docker', ['pull', migraImage]);
     (0, assert_1.default)(ormDbUri !== undefined, 'ORM_DB_URI is required');
     (0, assert_1.default)(shadowDbUri !== undefined, 'SHADOW_DB_URI is required');
