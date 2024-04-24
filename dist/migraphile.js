@@ -220,7 +220,7 @@ const graphileSettings = {
     logger: customLogger,
     afterReset: baselineFile || undefined
 };
-const migraImage = 'us-west2-docker.pkg.dev/disca-scripts/disca/migra:latest' || process.env.MIGRA_IMAGE;
+const migraImage = process.env.MIGRA_IMAGE || 'us-west2-docker.pkg.dev/disca-scripts/disca/migra:latest';
 const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
     console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`);
     let revertSql = '';
