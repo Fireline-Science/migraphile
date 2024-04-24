@@ -1,6 +1,6 @@
 {
   "name": "migraphile",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "main": "dist/migraphile.js",
   "repository": "https://github.com/Fireline-Science/migraphile.git",
   "author": "Aaron Merryman <aaron@firelinescience.com>",
