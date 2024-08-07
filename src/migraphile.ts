@@ -56,7 +56,7 @@ dotenv.config({
   path: path.join(processDir, '.env')
 })
 
-const PORT = 5105
+const port = process.env.PORT || 5105
 
 const dbUri = process.env.DB_URI
 const rootDbUri = process.env.ROOT_DB_URI
@@ -577,8 +577,8 @@ const main = async (): Promise<void> => {
     )
   }
 
-  server.listen(PORT, async () => {
-    console.log(`📡 Migration server listening on port ${chalk.bold.green(PORT)}`)
+  server.listen(port, async () => {
+    console.log(`📡 Migration server listening on port ${chalk.bold.green(port)}`)
     console.log(`
     Welcome to the Migration server! This server is used to generate migrations
     between the shadow database and the ${ORM_NAME} database. It can also be used to update

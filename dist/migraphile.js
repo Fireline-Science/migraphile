@@ -54,7 +54,7 @@ const processDir = process.cwd();
 dotenv.config({
     path: path_1.default.join(processDir, '.env')
 });
-const PORT = 5105;
+const port = process.env.PORT || 5105;
 const dbUri = process.env.DB_URI;
 const rootDbUri = process.env.ROOT_DB_URI;
 const shadowDbUri = process.env.SHADOW_DB_URI;
@@ -492,8 +492,8 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
         console.log(`🚀 Resetting orm database ${prettyDb(ormDbUri)}...`);
         yield (0, graphile_migrate_1.reset)(Object.assign(Object.assign({}, graphileSettings), { shadowConnectionString: ormDbUri }), true);
     }
-    server.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
-        console.log(`📡 Migration server listening on port ${chalk_1.default.bold.green(PORT)}`);
+    server.listen(port, () => __awaiter(void 0, void 0, void 0, function* () {
+        console.log(`📡 Migration server listening on port ${chalk_1.default.bold.green(port)}`);
         console.log(`
     Welcome to the Migration server! This server is used to generate migrations
     between the shadow database and the ${ORM_NAME} database. It can also be used to update
