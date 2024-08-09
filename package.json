@@ -10,6 +10,8 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "prettier:check": "prettier --check .",
+    "prettier:write": "prettier --write .",
     "start": "yarn src/migraphile.ts",
     "dev": "ts-node-dev --respawn --transpile-only src/migraphile.ts"
   },
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@types/node": "18.15.3",
     "@types/yargs": "^17.0.32",
+    "prettier": "^3.2.5",
     "ts-node-dev": "^2.0.0"
   },
   "dependencies": {
