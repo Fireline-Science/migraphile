@@ -527,7 +527,7 @@ const main = async (): Promise<void> => {
     await waitForDb(dbUri)
   }
 
-  if (command !== 'migrate' && command !== 'init') {
+  if (command !== 'migrate' && command !== 'init' && command !== 'run') {
     // Migrate can be run without root db or shadow db
     assert(rootDbUri !== undefined, 'ROOT_DB_URI is required')
     assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
