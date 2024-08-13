@@ -447,7 +447,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     if (dbUri) {
         yield waitForDb(dbUri);
     }
-    if (command !== 'migrate' && command !== 'init') {
+    if (command !== 'migrate' && command !== 'init' && command !== 'run') {
         // Migrate can be run without root db or shadow db
         (0, assert_1.default)(rootDbUri !== undefined, 'ROOT_DB_URI is required');
         (0, assert_1.default)(shadowDbUri !== undefined, 'SHADOW_DB_URI is required');
