@@ -277,7 +277,7 @@ const graphileSettings: Settings = {
   afterReset: baselineFile || undefined,
 }
 
-const migraImage = process.env.MIGRA_IMAGE || 'us-west2-docker.pkg.dev/disca-scripts/disca/migra:latest'
+const migraImage = process.env.MIGRA_IMAGE || 'firelinescience/migra:latest'
 
 const runMigra = async (from: string, to: string): Promise<string> => {
   console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`)
