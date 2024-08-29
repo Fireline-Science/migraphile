@@ -6,62 +6,22 @@ import fs from 'fs'
 import { highlight } from 'cli-highlight'
 import chalk from 'chalk'
 import { Pool, type PoolClient } from 'pg'
-import { commit, uncommit, migrate, reset, watch, status, init, run, type Settings } from 'graphile-migrate'
-import { spawnSync } from 'child_process'
+import { execSync, spawnSync } from 'child_process'
 import assert from 'assert'
 import * as dotenv from 'dotenv'
-import { Logger, type LogMeta } from '@graphile/logger'
-import chokidar from 'chokidar'
 import * as fastq from 'fastq'
 import type { queueAsPromised } from 'fastq'
 
-type Task =
-  | CommitTask
-  | UncommitTask
-  | RunCurrentTask
-  | RunTask
-  | OrmDoneTask
-  | RunMigrationsTask
-  | ResetShadowTask
-  | StatusTask
-  | InitCommand
-
-type CommitTask = {
-  name: 'commit'
-  args: string
-}
-
-type UncommitTask = {
-  name: 'uncommit'
-}
-
-type RunCurrentTask = {
-  name: 'run_current'
-}
-
-type RunTask = {
-  name: 'run'
-  args: string
-}
+type Task = FixDriftTask | OrmDoneTask
 
 type OrmDoneTask = {
   name: 'orm_done'
+  args?: string
 }
 
-type RunMigrationsTask = {
-  name: 'migrate'
-}
-
-type ResetShadowTask = {
-  name: 'reset_shadow'
-}
-
-type StatusTask = {
-  name: 'status'
-}
-
-type InitCommand = {
-  name: 'init'
+type FixDriftTask = {
+  name: 'fix_drift'
+  args?: string
 }
 
 const processDir = process.cwd()
@@ -76,11 +36,10 @@ const dbUri = process.env.DB_URI
 const rootDbUri = process.env.ROOT_DB_URI
 const shadowDbUri = process.env.SHADOW_DB_URI
 const ormDbUri = process.env.ORM_DB_URI
-const ormName = process.env.ORM_NAME || 'ORM'
-const baselineFile = process.env.BASELINE_FILE
-const schemas = process.env.SCHEMAS || 'public'
+const outputFilePath = process.env.OUTPUT_FILE_PATH
 
-const CURRENT_FILE_PATH = path.join(processDir, 'current', '1-current.sql')
+const ormName = process.env.ORM_NAME || 'ORM'
+const schemas = process.env.SCHEMAS || 'public'
 
 const GRAPHILE_MIGRATE = `💻 ${chalk.italic.hex('#ff795b')('Graphile Migrate')}`
 const MIGRA = chalk.italic.hex('#ff7d00')('Migra')
@@ -129,47 +88,6 @@ const taskMap: {
     method: Function
   }
 } = {
-  commit: {
-    usage: `${chalk.bold('commit')} ${chalk.yellow.italic('<description>')}`,
-    description: [
-      'Commits the current migration to the shadow database.',
-      `Example: ${chalk.bold.green('commit Add users table')}`,
-    ],
-    method: async (task: Task): Promise<void> => {
-      assert(task.name === 'commit')
-      const description = task.args.trim()
-      if (!description) {
-        console.error(`❌ No description provided`)
-        return
-      }
-
-      await commitMigration(description)
-    },
-  },
-  uncommit: {
-    usage: `${chalk.bold('uncommit')}`,
-    description: ['Uncommits the last migration from the shadow database.'],
-    method: async (): Promise<void> => {
-      await uncommitMigration()
-    },
-  },
-  run: {
-    usage: `${chalk.bold('run')} ${chalk.yellow.italic('<command>')}`,
-    description: ['Runs a sql file on the local database.', `Example: ${chalk.bold.green('run ./path/to/file.sql')}`],
-    method: async (task: Task): Promise<void> => {
-      assert(task.name === 'run')
-      console.log(`🚀 Running SQL file: ${task.args}...`)
-      const fileContents = fs.readFileSync(task.args, 'utf-8')
-      await run(graphileSettings, fileContents, 'stdin', { shadow: false, root: false, rootDatabase: false })
-    },
-  },
-  run_current: {
-    usage: `${chalk.bold('run_current')}`,
-    description: ['Runs the current migration on the local database.'],
-    method: async (): Promise<void> => {
-      await runCurrent()
-    },
-  },
   orm_done: {
     usage: `${chalk.bold('orm_done')}`,
     description: [
@@ -181,106 +99,24 @@ const taskMap: {
       await ormDone()
     },
   },
-  migrate: {
-    usage: `${chalk.bold('migrate')}`,
-    description: ['Runs all migrations on the local database.'],
+  fix_drift: {
+    usage: `${chalk.bold('fix_drift')}`,
+    description: [
+      `Called by ${GRAPHILE_MIGRATE} when drift detection needs to happen. Should be part of the beforeCurrent and afterAllMigrations hooks.`,
+      `This will compare the current database to the shadow database and revert the current database to the shadow database state.`,
+    ],
     method: async (): Promise<void> => {
-      await runMigrations()
+      await fixDriftAction()
     },
   },
-  reset_shadow: {
-    usage: `${chalk.bold('reset_shadow')}`,
-    description: ['Resets the shadow database to the state of the local database.'],
-    method: async (): Promise<void> => {
-      await resetShadowDb()
-    },
-  },
-  status: {
-    usage: `${chalk.bold('status')}`,
-    description: ['Shows the status of the migrations.'],
-    method: async (): Promise<void> => {
-      await getStatus()
-    },
-  },
-  init: {
-    usage: `${chalk.bold('init')}`,
-    description: ['Initializes the migration server.'],
-    method: async (): Promise<void> => {
-      await init({
-        folder: true,
-      })
-      // This will create a "./migrations" folder, we need to move everything up one level to ".".
-      const migrationsFolder = path.join('.', 'migrations')
-      const files = fs.readdirSync(migrationsFolder)
-      files.forEach((file) => {
-        fs.renameSync(path.join(migrationsFolder, file), path.join('.', file))
-      })
-      fs.rmdirSync(migrationsFolder)
-
-      // Open up the file ./.gmrc and replace the following: ./migrations with './'
-      const gmrcFile = path.join('.', '.gmrc')
-      const initConfig: Settings = {
-        ...graphileSettings,
-        migrationsFolder: './',
-        logger: undefined,
-      }
-      fs.writeFileSync(gmrcFile, JSON.stringify(initConfig, null, 2))
-    },
-  },
-}
-
-const parseGraphileMigrateMessage = (message: string): { dbType: string; dbMessage: string } => {
-  // Can be one of:
-  // graphile-migrate[shadow]: <message>
-  // graphile-migrate: <message> (default to db instead of shadow)
-  const messageParts = message.match(/graphile-migrate(\[(.*)])?: (.*)/)
-  const dbType = messageParts?.[2] || 'db'
-  const dbMessage = messageParts?.[3] || message
-
-  return {
-    dbType,
-    dbMessage,
-  }
-}
-
-function logFunctionFactory(_scope: unknown) {
-  return function logFunction(_level: string, message: string, _meta: LogMeta | undefined) {
-    const { dbType, dbMessage } = parseGraphileMigrateMessage(message)
-    let prettyMessage = ''
-
-    switch (dbType) {
-      case 'shadow':
-        assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
-        prettyMessage = prettyDb(shadowDbUri)
-        break
-      case 'root':
-        assert(rootDbUri !== undefined, 'ROOT_DB_URI is required')
-        prettyMessage = prettyDb(rootDbUri)
-        break
-      default:
-        assert(dbUri !== undefined, 'DB_URI is required')
-        prettyMessage = prettyDb(dbUri)
-    }
-
-    console.log(`${GRAPHILE_MIGRATE} → ${prettyMessage}: ${dbMessage}`)
-  }
-}
-
-const customLogger = new Logger(logFunctionFactory)
-
-const graphileSettings: Settings = {
-  connectionString: dbUri,
-  shadowConnectionString: shadowDbUri,
-  rootConnectionString: rootDbUri,
-  migrationsFolder: processDir,
-  logger: customLogger,
-  afterReset: baselineFile || undefined,
 }
 
 const migraImage = process.env.MIGRA_IMAGE || 'firelinescience/migra:latest'
 
 const runMigra = async (from: string, to: string): Promise<string> => {
-  console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`)
+  console.log(
+    `🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`,
+  )
 
   let revertSql = ''
 
@@ -289,7 +125,9 @@ const runMigra = async (from: string, to: string): Promise<string> => {
 
   try {
     for (const schema of schemaList) {
-      console.log(`🔍 ${MIGRA} → Comparing schema: ${chalk.bold(schema.trim())}...`)
+      console.log(
+        `🔍 ${MIGRA} → Comparing schema: ${chalk.bold(schema.trim())}...`,
+      )
       const args = [
         'run',
         '--rm',
@@ -318,8 +156,11 @@ const runMigra = async (from: string, to: string): Promise<string> => {
 
 const fixDrift = async (): Promise<void> => {
   console.log(`🤔 Looking for drift...`)
-  assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
-  assert(dbUri !== undefined, 'DB_URI is required')
+  if (!shadowDbUri || !dbUri) {
+    console.error('🚨 No given database URIs for diff, exiting gracefully.')
+    process.exit(0)
+  }
+
   const revertSql = await runMigra(dbUri, shadowDbUri)
 
   const pool = new Pool({
@@ -328,43 +169,129 @@ const fixDrift = async (): Promise<void> => {
 
   const client = await pool.connect()
 
-  if (revertSql) {
-    console.log('🚨 Drift detected! Reverting database to shadow database state, sql below:')
-    console.log(highlight(revertSql, highlightOptions))
+  try {
+    if (revertSql) {
+      console.log(
+        '🚨 Drift detected! Reverting database to shadow database state, sql below:',
+      )
+      console.log(highlight(revertSql, highlightOptions))
 
-    try {
       await client.query(revertSql)
-    } catch (error) {
-      console.error('Error executing SQL:', error)
+    } else {
+      console.log('📢 No drift detected, no need to revert.')
     }
-  } else {
-    console.log('📢 No drift detected, no need to revert.')
+  } catch (error) {
+    console.error('Error executing SQL:', error)
+  } finally {
+    client.release()
+    await pool.end()
+  }
+}
+
+const getProcessCommand = (pid: string): string | null => {
+  try {
+    return execSync(`ps -p ${pid} -o command=`).toString().trim()
+  } catch (err) {
+    return null
+  }
+}
+
+const getParentPid = (pid: string): string | null => {
+  try {
+    return execSync(`ps -p ${pid} -o ppid=`).toString().trim()
+  } catch (err) {
+    return null
+  }
+}
+
+const findGraphileMigrateCommand = (
+  pid: string,
+): { graphileMigratePid: string; command: string } | null => {
+  let currentPid: string | null = pid
+
+  while (currentPid && currentPid !== '1') {
+    // Stop when reaching PID 1 or if PID is null
+    const command = getProcessCommand(currentPid)
+    if (command && command.includes('graphile-migrate')) {
+      const tokens = command.split(/\s+/)
+      const index = tokens.findIndex((token) =>
+        token.includes('graphile-migrate'),
+      )
+      if (index !== -1 && tokens.length > index + 1) {
+        return {
+          graphileMigratePid: currentPid,
+          command: tokens[index + 1],
+        }
+      }
+    }
+    currentPid = getParentPid(currentPid)
   }
 
-  client.release()
-  await pool.end()
+  return null // Return null if 'graphile-migrate' was not found
 }
 
-const getStatus = async (): Promise<void> => {
-  console.log(`🚀 Checking migration status using ${GRAPHILE_MIGRATE}...`)
-  const migrationStatus = await status(graphileSettings)
-
-  const statusIcon = migrationStatus.remainingMigrations?.length === 0 ? '✅' : '🚨'
-  process.stdout.write(`${statusIcon} Migration status: `)
-  console.log(migrationStatus)
+// We need to look up the process tree to find the "graphile-migrate" command that was ran.
+// We then need to create temporary file that contains graphile migrates PID, and a number
+// that indicates the number of times this command has been ran within that parent PID.
+const getExecutionCount = (pid: string): number => {
+  try {
+    const count = fs.readFileSync(`/tmp/graphile-migrate-${pid}.txt`, 'utf8')
+    return parseInt(count, 10) || 0
+  } catch (err) {
+    return 0
+  }
 }
 
-const runMigrations = async (): Promise<void> => {
-  console.log(`🚀 Running migrations using ${GRAPHILE_MIGRATE}...`)
-  await migrate(graphileSettings)
-  assert(dbUri !== undefined, 'DB_URI is required')
-  console.log(`✅ Migrations applied to ${prettyDb(dbUri)}.`)
+const setExecutionCount = (pid: string, count: number): void => {
+  fs.writeFileSync(`/tmp/graphile-migrate-${pid}.txt`, count.toString())
+}
+
+const checkAndIncrementExecutionCount = (pid: string): void => {
+  const currentCount = getExecutionCount(pid)
+  setExecutionCount(pid, currentCount + 1)
+  if (currentCount > 0) {
+    console.error(
+      `🚫 Draft detection already accounted for (${currentCount} time before). Exiting gracefully.`,
+    )
+    process.exit(0)
+  }
+}
+
+const fixDriftAction = async (): Promise<void> => {
+  const parentGmContext = findGraphileMigrateCommand(process.pid.toString())
+
+  if (!parentGmContext) {
+    console.error(
+      'Could not find graphile-migrate command, this should only be ran from within a graphile-migrate command.',
+    )
+    process.exit(1)
+  }
+
+  // This command should only be ran for 'commit' and 'watch' commands using Typescripts type guard
+  const isValidCommand = (
+    command: string,
+  ): command is 'commit' | 'watch' | 'uncommit' =>
+    command === 'commit' || command === 'watch' || command === 'uncommit'
+
+  if (!isValidCommand(parentGmContext.command)) {
+    console.error('🚫 Not handling drift for this command, exiting gracefully.')
+    return
+  }
+
+  // We only want to run this command once per parent PID when the command is 'commit'
+  if (parentGmContext.command === 'commit') {
+    checkAndIncrementExecutionCount(parentGmContext.graphileMigratePid)
+  }
+
+  await fixDrift()
 }
 
 const ormDone = async (): Promise<void> => {
   console.log(`🎉 ${ORM_NAME} finished!`)
   assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
   assert(ormDbUri !== undefined, 'ORM_DB_URI is required')
+  assert(outputFilePath !== undefined, 'OUTPUT_FILE_PATH is required')
+
   let diffSql = await runMigra(shadowDbUri, ormDbUri)
   if (!diffSql) {
     diffSql = EMPTY_MIGRATION_TEXT
@@ -373,22 +300,25 @@ const ormDone = async (): Promise<void> => {
 
   // Check if file contents are different before writing
   let currentContent = ''
-  if (fs.existsSync(CURRENT_FILE_PATH)) {
-    currentContent = fs.readFileSync(CURRENT_FILE_PATH, 'utf-8')
+  if (fs.existsSync(outputFilePath)) {
+    currentContent = fs.readFileSync(outputFilePath, 'utf-8')
   }
 
   if (currentContent !== diffSql) {
     console.log(`📜 See SQL below:`)
     console.log(highlight(diffSql, highlightOptions))
 
-    fs.writeFileSync(CURRENT_FILE_PATH, diffSql)
+    fs.writeFileSync(outputFilePath, diffSql)
     console.log(`✅ Updated ${CURRENT_SQL} migration file.`)
   } else {
     console.log(`📌 No changes needed in ${CURRENT_SQL}.`)
   }
 }
 
-const withClient = async (dbConnectionString: string, fn: (client: PoolClient) => Promise<void>): Promise<void> => {
+const withClient = async (
+  dbConnectionString: string,
+  fn: (client: PoolClient) => Promise<void>,
+): Promise<void> => {
   const pool = new Pool({
     connectionString: dbConnectionString,
   })
@@ -406,14 +336,18 @@ const withClient = async (dbConnectionString: string, fn: (client: PoolClient) =
 }
 
 const waitForDb = async (dbConnectionString: string): Promise<void> => {
-  console.log(`🔍 Checking availability for ${prettyDb(dbConnectionString)} ... `)
+  console.log(
+    `🔍 Checking availability for ${prettyDb(dbConnectionString)} ... `,
+  )
 
   const startTime = Date.now()
   const TIMEOUT_MS = 60 * 1000 // 1 minute in milliseconds
 
   while (true) {
     if (Date.now() - startTime > TIMEOUT_MS) {
-      throw new Error(`🕐 Timeout: Unable to connect to ${prettyDb(dbConnectionString)} after 1 minute.`)
+      throw new Error(
+        `🕐 Timeout: Unable to connect to ${prettyDb(dbConnectionString)} after 1 minute.`,
+      )
     }
 
     try {
@@ -423,7 +357,9 @@ const waitForDb = async (dbConnectionString: string): Promise<void> => {
       })
       break
     } catch (e) {
-      console.log(`🔴 ${prettyDb(dbConnectionString)} is not available yet, waiting 2 seconds...`)
+      console.log(
+        `🔴 ${prettyDb(dbConnectionString)} is not available yet, waiting 2 seconds...`,
+      )
       await new Promise((resolve) => setTimeout(resolve, 2000))
     }
   }
@@ -463,54 +399,24 @@ const ensureDbExists = async (dbConnectionString: string): Promise<boolean> => {
   return wasCreated
 }
 
-const resetShadowDb = async (): Promise<void> => {
-  assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
-  console.log(`🚀 Resetting shadow database ${prettyDb(shadowDbUri)}...`)
-  await reset(graphileSettings, true)
-}
-
-const commitMigration = async (description: string): Promise<void> => {
-  console.log(`🚀 Committing migration using ${GRAPHILE_MIGRATE}...`)
-  try {
-    await resetShadowDb()
-    await fixDrift()
-    await commit(graphileSettings, description)
-  } catch (e) {
-    console.error('Error committing migration:', e)
-  }
-}
-
-const uncommitMigration = async (): Promise<void> => {
-  console.log(`🚀 Uncommitting migration using ${GRAPHILE_MIGRATE}...`)
-  await uncommit(graphileSettings)
-}
-
-const runCurrent = async (): Promise<void> => {
-  // Don't fix drift if we are not up to date with the shadow db
-  const migrationStatus = await status(graphileSettings)
-  if ((migrationStatus.remainingMigrations || []).length > 0) {
-    console.log(`🚀 There are remaining migrations, running them first...`)
-    await migrate(graphileSettings)
-  }
-
-  console.log(`🚀 Running current using ${GRAPHILE_MIGRATE}...`)
-  await fixDrift()
-  await watch(graphileSettings, true, false)
-}
-
 const q: queueAsPromised<Task> = fastq.promise(asyncWorker, 1)
 
 async function asyncWorker(arg: Task): Promise<void> {
   await taskMap[arg.name].method(arg)
 }
 
-const runCommand = async (command: string | undefined, args: string): Promise<void> => {
+const runCommand = async (
+  command: string | undefined,
+  args: string,
+): Promise<void> => {
   if (!command) {
     console.error(`❌ No command provided`)
     return
   }
 
-  console.log(`📡 Migration server received command: ${chalk.bold.green(command)} with args: ${chalk.bold.green(args)}`)
+  console.log(
+    `📡 Migration server received command: ${chalk.bold.green(command)} with args: ${chalk.bold.green(args)}`,
+  )
   if (!(command in taskMap)) {
     console.error(`❌ Unknown command: ${chalk.bold.red(command)}`)
     process.exit(1)
@@ -540,39 +446,6 @@ const main = async (): Promise<void> => {
     process.exit(0)
   }
 
-  // Always reset shadow db on startup
-  await resetShadowDb()
-
-  console.log(`🚀 Watching migrations using ${GRAPHILE_MIGRATE}...`)
-
-  const watcher = chokidar.watch(CURRENT_FILE_PATH, {
-    /*
-     * Without `usePolling`, on Linux, you can prevent the watching from
-     * working by issuing `git stash && sleep 2 && git stash pop`. This is
-     * annoying.
-     */
-    usePolling: true,
-
-    /*
-     * Some editors stream the writes out a little at a time, we want to wait
-     * for the write to finish before triggering.
-     */
-    awaitWriteFinish: {
-      stabilityThreshold: 200,
-      pollInterval: 100,
-    },
-
-    /*
-     * We don't want to run the queue too many times during startup; so we
-     * call it once on the 'ready' event.
-     */
-    ignoreInitial: true,
-  })
-  watcher.on('add', () => q.push({ name: 'run_current' }))
-  watcher.on('change', () => q.push({ name: 'run_current' }))
-  watcher.on('unlink', () => q.push({ name: 'run_current' }))
-  watcher.once('ready', () => q.push({ name: 'run_current' }))
-
   const server = net.createServer((socket) => {
     socket.on('data', async (data) => {
       const [command, ...rest] = data.toString().trim().split(' ')
@@ -588,21 +461,12 @@ const main = async (): Promise<void> => {
   assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
   assert(rootDbUri !== undefined, 'ROOT_DB_URI is required')
   assert(dbUri !== undefined, 'DB_URI is required')
-  const wasCreated = await ensureDbExists(ormDbUri)
-  if (wasCreated) {
-    // If we created, we can reset it as well
-    console.log(`🚀 Resetting orm database ${prettyDb(ormDbUri)}...`)
-    await reset(
-      {
-        ...graphileSettings,
-        shadowConnectionString: ormDbUri,
-      },
-      true,
-    )
-  }
+  await ensureDbExists(ormDbUri)
 
   server.listen(port, async () => {
-    console.log(`📡 Migration server listening on port ${chalk.bold.green(port)}`)
+    console.log(
+      `📡 Migration server listening on port ${chalk.bold.green(port)}`,
+    )
     console.log(`
     Welcome to the Migration server! This server is used to generate migrations
     between the shadow database and the ${ORM_NAME} database. It can also be used to update
@@ -614,6 +478,8 @@ ${schemas
   .split(',')
   .map((s) => `${COMMAND_TAB_SPACING}* ${s}`)
   .join('\n')}
+  
+    ${chalk.bold('migration output file:')} ${outputFilePath ? chalk.italic.bold(path.relative(process.cwd(), outputFilePath)) : chalk.red('not set')}
     
     ${chalk.bold('root database:')} ${prettyDb(rootDbUri)}
       * This is the database that is used to create other databases.
