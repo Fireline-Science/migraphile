@@ -32,10 +32,11 @@ dotenv.config({
 
 const port = process.env.PORT || 5105
 
-const dbUri = process.env.DB_URI
-const rootDbUri = process.env.ROOT_DB_URI
-const shadowDbUri = process.env.SHADOW_DB_URI
-const ormDbUri = process.env.ORM_DB_URI
+// If GM_DBURL, we are probably running inside of graphile migrate and should use that instead.
+const dbUrl = process.env.GM_DBURL || process.env.DATABASE_URL
+const rootDbUrl = process.env.ROOT_DATABASE_URL
+const shadowDbUrl = process.env.SHADOW_DATABASE_URL
+const ormDbUrl = process.env.ORM_DATABASE_URL
 const outputFilePath = process.env.OUTPUT_FILE_PATH
 
 const ormName = process.env.ORM_NAME || 'ORM'
@@ -49,23 +50,23 @@ const EMPTY_MIGRATION_TEXT = '-- Enter migration here\n'
 const COMMAND_DESCRIPTION_TAB_SPACING = ' '.repeat(12)
 const COMMAND_TAB_SPACING = ' '.repeat(8)
 
-const getDbName = (dbUri: string): string => {
-  const url = new URL(dbUri)
+const getDbName = (dbUrl: string): string => {
+  const url = new URL(dbUrl)
   return url.pathname.slice(1)
 }
 
-const prettyDb = (dbUri: string): string => {
-  const dbName = getDbName(dbUri)
+const prettyDb = (dbUrl: string): string => {
+  const dbName = getDbName(dbUrl)
 
-  if (dbUri === shadowDbUri) {
+  if (dbUrl === shadowDbUrl) {
     return `👻 ${chalk.italic.yellow(dbName)}`
   }
 
-  if (dbUri === ormDbUri) {
+  if (dbUrl === ormDbUrl) {
     return `⚙️ ${chalk.italic.green(dbName)}`
   }
 
-  if (dbUri === rootDbUri) {
+  if (dbUrl === rootDbUrl) {
     return `🔑 ${chalk.italic.red(dbName)}`
   }
 
@@ -156,15 +157,15 @@ const runMigra = async (from: string, to: string): Promise<string> => {
 
 const fixDrift = async (): Promise<void> => {
   console.log(`🤔 Looking for drift...`)
-  if (!shadowDbUri || !dbUri) {
-    console.error('🚨 No given database URIs for diff, exiting gracefully.')
+  if (!shadowDbUrl || !dbUrl) {
+    console.error('🚨 No given database URLs for diff, exiting gracefully.')
     process.exit(0)
   }
 
-  const revertSql = await runMigra(dbUri, shadowDbUri)
+  const revertSql = await runMigra(dbUrl, shadowDbUrl)
 
   const pool = new Pool({
-    connectionString: dbUri,
+    connectionString: dbUrl,
   })
 
   const client = await pool.connect()
@@ -288,11 +289,11 @@ const fixDriftAction = async (): Promise<void> => {
 
 const ormDone = async (): Promise<void> => {
   console.log(`🎉 ${ORM_NAME} finished!`)
-  assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
-  assert(ormDbUri !== undefined, 'ORM_DB_URI is required')
+  assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
+  assert(ormDbUrl !== undefined, 'ORM_DATABASE_URL is required')
   assert(outputFilePath !== undefined, 'OUTPUT_FILE_PATH is required')
 
-  let diffSql = await runMigra(shadowDbUri, ormDbUri)
+  let diffSql = await runMigra(shadowDbUrl, ormDbUrl)
   if (!diffSql) {
     diffSql = EMPTY_MIGRATION_TEXT
     console.log('📢 No migrations needed.')
@@ -369,12 +370,12 @@ const ensureDbExists = async (dbConnectionString: string): Promise<boolean> => {
   console.log(`🔍 Ensuring existence for ${prettyDb(dbConnectionString)} ... `)
   let wasCreated = false
 
-  // If dbConnectionString is rootDbUri, we need to connect to the default postgres db
-  assert(rootDbUri !== undefined, 'ROOT_DB_URI is required')
-  assert(dbUri !== undefined, 'DB_URI is required')
-  const uriToUse = dbConnectionString === rootDbUri ? dbUri : rootDbUri
+  // If dbConnectionString is rootDbUrl, we need to connect to the default postgres db
+  assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
+  assert(dbUrl !== undefined, 'DATABASE_URL is required')
+  const urlToUse = dbConnectionString === rootDbUrl ? dbUrl : rootDbUrl
 
-  await withClient(uriToUse, async (client) => {
+  await withClient(urlToUse, async (client) => {
     let exists = false
     try {
       // Check if db exists first
@@ -429,16 +430,16 @@ const main = async (): Promise<void> => {
   const command = process.argv[2]
   const rest = process.argv.slice(3)
 
-  if (dbUri) {
-    await waitForDb(dbUri)
+  if (dbUrl) {
+    await waitForDb(dbUrl)
   }
 
   if (command !== 'migrate' && command !== 'init' && command !== 'run') {
     // Migrate can be run without root db or shadow db
-    assert(rootDbUri !== undefined, 'ROOT_DB_URI is required')
-    assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
-    await ensureDbExists(rootDbUri)
-    await ensureDbExists(shadowDbUri)
+    assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
+    assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
+    await ensureDbExists(rootDbUrl)
+    await ensureDbExists(shadowDbUrl)
   }
 
   if (command) {
@@ -457,11 +458,11 @@ const main = async (): Promise<void> => {
   console.log(`📥 Pulling ${MIGRA} image [${chalk.italic(migraImage)}]...`)
   spawnSync('docker', ['pull', migraImage])
 
-  assert(ormDbUri !== undefined, 'ORM_DB_URI is required')
-  assert(shadowDbUri !== undefined, 'SHADOW_DB_URI is required')
-  assert(rootDbUri !== undefined, 'ROOT_DB_URI is required')
-  assert(dbUri !== undefined, 'DB_URI is required')
-  await ensureDbExists(ormDbUri)
+  assert(ormDbUrl !== undefined, 'ORM_DATABASE_URL is required')
+  assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
+  assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
+  assert(dbUrl !== undefined, 'DATABASE_URL is required')
+  await ensureDbExists(ormDbUrl)
 
   server.listen(port, async () => {
     console.log(
@@ -481,18 +482,18 @@ ${schemas
   
     ${chalk.bold('migration output file:')} ${outputFilePath ? chalk.italic.bold(path.relative(process.cwd(), outputFilePath)) : chalk.red('not set')}
     
-    ${chalk.bold('root database:')} ${prettyDb(rootDbUri)}
+    ${chalk.bold('root database:')} ${prettyDb(rootDbUrl)}
       * This is the database that is used to create other databases.
     
-    ${chalk.bold('app database:')} ${prettyDb(dbUri)}
+    ${chalk.bold('app database:')} ${prettyDb(dbUrl)}
       * This is the database that is used by the app.
     
-    ${chalk.bold('orm database:')} ${prettyDb(ormDbUri)}
+    ${chalk.bold('orm database:')} ${prettyDb(ormDbUrl)}
       * This is the database that is used by ${ORM_NAME}. It is always in sync with the
         ${ORM_NAME} models. When a change is made to the ${ORM_NAME} models, a
         migration is automatically generated.
     
-    ${chalk.bold('shadow database:')} ${prettyDb(shadowDbUri)}
+    ${chalk.bold('shadow database:')} ${prettyDb(shadowDbUrl)}
       * This is the database that is used by ${GRAPHILE_MIGRATE}. It is always in sync
         with the latest migrations ${chalk.italic.bold('excluding')} the current migration.
         
