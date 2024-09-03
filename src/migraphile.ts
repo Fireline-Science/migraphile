@@ -115,6 +115,9 @@ const taskMap: {
 const migraImage = process.env.MIGRA_IMAGE || 'firelinescience/migra:latest'
 
 const runMigra = async (from: string, to: string): Promise<string> => {
+  await waitForDb(from)
+  await waitForDb(to)
+
   console.log(
     `🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`,
   )
@@ -430,18 +433,6 @@ const main = async (): Promise<void> => {
   const command = process.argv[2]
   const rest = process.argv.slice(3)
 
-  if (dbUrl) {
-    await waitForDb(dbUrl)
-  }
-
-  if (command !== 'migrate' && command !== 'init' && command !== 'run') {
-    // Migrate can be run without root db or shadow db
-    assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
-    assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
-    await ensureDbExists(rootDbUrl)
-    await ensureDbExists(shadowDbUrl)
-  }
-
   if (command) {
     await runCommand(command, rest.join(' '))
     process.exit(0)
@@ -462,6 +453,9 @@ const main = async (): Promise<void> => {
   assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
   assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
   assert(dbUrl !== undefined, 'DATABASE_URL is required')
+  await ensureDbExists(rootDbUrl)
+  await ensureDbExists(dbUrl)
+  await ensureDbExists(shadowDbUrl)
   await ensureDbExists(ormDbUrl)
 
   server.listen(port, async () => {

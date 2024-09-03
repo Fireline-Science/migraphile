@@ -117,6 +117,8 @@ const taskMap = {
 };
 const migraImage = process.env.MIGRA_IMAGE || 'firelinescience/migra:latest';
 const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
+    yield waitForDb(from);
+    yield waitForDb(to);
     console.log(`🔍 Comparing ${prettyDb(from)} to ${prettyDb(to)} using ${MIGRA}...`);
     let revertSql = '';
     // Split the schemas string into an array
@@ -365,16 +367,6 @@ const runCommand = (command, args) => __awaiter(void 0, void 0, void 0, function
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
     const command = process.argv[2];
     const rest = process.argv.slice(3);
-    if (dbUrl) {
-        yield waitForDb(dbUrl);
-    }
-    if (command !== 'migrate' && command !== 'init' && command !== 'run') {
-        // Migrate can be run without root db or shadow db
-        (0, assert_1.default)(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required');
-        (0, assert_1.default)(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required');
-        yield ensureDbExists(rootDbUrl);
-        yield ensureDbExists(shadowDbUrl);
-    }
     if (command) {
         yield runCommand(command, rest.join(' '));
         process.exit(0);
@@ -391,6 +383,9 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     (0, assert_1.default)(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required');
     (0, assert_1.default)(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required');
     (0, assert_1.default)(dbUrl !== undefined, 'DATABASE_URL is required');
+    yield ensureDbExists(rootDbUrl);
+    yield ensureDbExists(dbUrl);
+    yield ensureDbExists(shadowDbUrl);
     yield ensureDbExists(ormDbUrl);
     server.listen(port, () => __awaiter(void 0, void 0, void 0, function* () {
         console.log(`📡 Migration server listening on port ${chalk_1.default.bold.green(port)}`);
