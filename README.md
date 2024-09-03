@@ -21,11 +21,6 @@ To do this, you will need to add the following to your `.gmrc` file that graphil
 
 ```json5
 {
-  "connectionString": "...",
-  "shadowConnectionString": "...",
-  "rootConnectionString": "...",
-  "migrationsFolder": "./",
-  
   // Previously managed via BASELINE_FILE
   "afterReset": "schema/supabase.sql",
   
@@ -48,6 +43,26 @@ To do this, you will need to add the following to your `.gmrc` file that graphil
 The fix_drift command is smart enough to run the necessary migrations to fix the drift. This is done by comparing the
 shadow database to the local database. The fixes are then applied to the local database. This command is intended to be
 called within the graphile-migrate process.
+
+Migraphile will also pull some additional parameters from your environment. Create an `.env` file with the following
+parameters:
+
+```bash
+# graphile migrate
+DATABASE_URL=postgres://user:pass@localhost:54322/postgres
+ROOT_DATABASE_URL=postgres://user:pass@localhost:54322/template1
+SHADOW_DATABASE_URL=postgres://user:pass@localhost:54322/shadow
+
+# migraphile
+APP_DATABASE_URL=postgres://user:pass@localhost:54322/postgres
+ORM_DATABASE_URL=postgres://user:pass@localhost:54322/knex
+ORM_NAME=Knex
+OUTPUT_FILE_PATH=current/1-current.sql
+SCHEMAS=public
+```
+
+One note is that the `DATABASE_URL` is the same as the `APP_DATABASE_URL` because graphile-migrate likes to override the
+variable Migraphile needs to be able to grab the original value.
 
 ### Generate Migrations 
 

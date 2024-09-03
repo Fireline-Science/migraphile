@@ -52,8 +52,8 @@ dotenv.config({
     path: path_1.default.join(processDir, '.env'),
 });
 const port = process.env.PORT || 5105;
-// If GM_DBURL, we are probably running inside of graphile migrate and should use that instead.
-const dbUrl = process.env.GM_DBURL || process.env.DATABASE_URL;
+// We don't use DATABASE_URL because graphile migrate likes to override it
+const appDbUrl = process.env.APP_DATABASE_URL;
 const rootDbUrl = process.env.ROOT_DATABASE_URL;
 const shadowDbUrl = process.env.SHADOW_DATABASE_URL;
 const ormDbUrl = process.env.ORM_DATABASE_URL;
@@ -152,13 +152,13 @@ const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
 });
 const fixDrift = () => __awaiter(void 0, void 0, void 0, function* () {
     console.log(`🤔 Looking for drift...`);
-    if (!shadowDbUrl || !dbUrl) {
+    if (!shadowDbUrl || !appDbUrl) {
         console.error('🚨 No given database URLs for diff, exiting gracefully.');
         process.exit(0);
     }
-    const revertSql = yield runMigra(dbUrl, shadowDbUrl);
+    const revertSql = yield runMigra(appDbUrl, shadowDbUrl);
     const pool = new pg_1.Pool({
-        connectionString: dbUrl,
+        connectionString: appDbUrl,
     });
     const client = yield pool.connect();
     try {
@@ -181,7 +181,7 @@ const fixDrift = () => __awaiter(void 0, void 0, void 0, function* () {
 });
 const getProcessCommand = (pid) => {
     try {
-        return (0, child_process_1.execSync)(`ps -p ${pid} -o command=`).toString().trim();
+        return (0, child_process_1.execSync)(`ps -ww -p ${pid} -o args=`).toString().trim();
     }
     catch (err) {
         return null;
@@ -197,21 +197,30 @@ const getParentPid = (pid) => {
 };
 const findGraphileMigrateCommand = (pid) => {
     let currentPid = pid;
+    console.log(`Starting search for 'graphile-migrate' with initial PID: ${pid}`);
     while (currentPid && currentPid !== '1') {
-        // Stop when reaching PID 1 or if PID is null
+        console.log(`Checking process with PID: ${currentPid}`);
         const command = getProcessCommand(currentPid);
-        if (command && command.includes('graphile-migrate')) {
-            const tokens = command.split(/\s+/);
-            const index = tokens.findIndex((token) => token.includes('graphile-migrate'));
-            if (index !== -1 && tokens.length > index + 1) {
-                return {
-                    graphileMigratePid: currentPid,
-                    command: tokens[index + 1],
-                };
+        if (command) {
+            console.log(`Command for PID ${currentPid}: ${command}`);
+            if (command.includes('graphile-migrate')) {
+                const tokens = command.split(/\s+/);
+                const index = tokens.findIndex((token) => token.includes('graphile-migrate'));
+                if (index !== -1 && tokens.length > index + 1) {
+                    console.log(`'graphile-migrate' found in PID ${currentPid}. Returning command: ${tokens[index + 1]}`);
+                    return {
+                        graphileMigratePid: currentPid,
+                        command: tokens[index + 1],
+                    };
+                }
             }
+        }
+        else {
+            console.log(`No command found for PID ${currentPid}`);
         }
         currentPid = getParentPid(currentPid);
     }
+    console.log(`'graphile-migrate' not found for initial PID: ${pid}`);
     return null; // Return null if 'graphile-migrate' was not found
 };
 // We need to look up the process tree to find the "graphile-migrate" command that was ran.
@@ -320,8 +329,8 @@ const ensureDbExists = (dbConnectionString) => __awaiter(void 0, void 0, void 0,
     let wasCreated = false;
     // If dbConnectionString is rootDbUrl, we need to connect to the default postgres db
     (0, assert_1.default)(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required');
-    (0, assert_1.default)(dbUrl !== undefined, 'DATABASE_URL is required');
-    const urlToUse = dbConnectionString === rootDbUrl ? dbUrl : rootDbUrl;
+    (0, assert_1.default)(appDbUrl !== undefined, 'DATABASE_URL is required');
+    const urlToUse = dbConnectionString === rootDbUrl ? appDbUrl : rootDbUrl;
     yield withClient(urlToUse, (client) => __awaiter(void 0, void 0, void 0, function* () {
         let exists = false;
         try {
@@ -382,9 +391,9 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     (0, assert_1.default)(ormDbUrl !== undefined, 'ORM_DATABASE_URL is required');
     (0, assert_1.default)(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required');
     (0, assert_1.default)(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required');
-    (0, assert_1.default)(dbUrl !== undefined, 'DATABASE_URL is required');
+    (0, assert_1.default)(appDbUrl !== undefined, 'DATABASE_URL is required');
     yield ensureDbExists(rootDbUrl);
-    yield ensureDbExists(dbUrl);
+    yield ensureDbExists(appDbUrl);
     yield ensureDbExists(shadowDbUrl);
     yield ensureDbExists(ormDbUrl);
     server.listen(port, () => __awaiter(void 0, void 0, void 0, function* () {
@@ -406,7 +415,7 @@ ${schemas
     ${chalk_1.default.bold('root database:')} ${prettyDb(rootDbUrl)}
       * This is the database that is used to create other databases.
     
-    ${chalk_1.default.bold('app database:')} ${prettyDb(dbUrl)}
+    ${chalk_1.default.bold('app database:')} ${prettyDb(appDbUrl)}
       * This is the database that is used by the app.
     
     ${chalk_1.default.bold('orm database:')} ${prettyDb(ormDbUrl)}

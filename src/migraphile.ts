@@ -32,8 +32,8 @@ dotenv.config({
 
 const port = process.env.PORT || 5105
 
-// If GM_DBURL, we are probably running inside of graphile migrate and should use that instead.
-const dbUrl = process.env.GM_DBURL || process.env.DATABASE_URL
+// We don't use DATABASE_URL because graphile migrate likes to override it
+const appDbUrl = process.env.APP_DATABASE_URL
 const rootDbUrl = process.env.ROOT_DATABASE_URL
 const shadowDbUrl = process.env.SHADOW_DATABASE_URL
 const ormDbUrl = process.env.ORM_DATABASE_URL
@@ -160,15 +160,15 @@ const runMigra = async (from: string, to: string): Promise<string> => {
 
 const fixDrift = async (): Promise<void> => {
   console.log(`🤔 Looking for drift...`)
-  if (!shadowDbUrl || !dbUrl) {
+  if (!shadowDbUrl || !appDbUrl) {
     console.error('🚨 No given database URLs for diff, exiting gracefully.')
     process.exit(0)
   }
 
-  const revertSql = await runMigra(dbUrl, shadowDbUrl)
+  const revertSql = await runMigra(appDbUrl, shadowDbUrl)
 
   const pool = new Pool({
-    connectionString: dbUrl,
+    connectionString: appDbUrl,
   })
 
   const client = await pool.connect()
@@ -194,7 +194,7 @@ const fixDrift = async (): Promise<void> => {
 
 const getProcessCommand = (pid: string): string | null => {
   try {
-    return execSync(`ps -p ${pid} -o command=`).toString().trim()
+    return execSync(`ps -ww -p ${pid} -o args=`).toString().trim()
   } catch (err) {
     return null
   }
@@ -213,24 +213,36 @@ const findGraphileMigrateCommand = (
 ): { graphileMigratePid: string; command: string } | null => {
   let currentPid: string | null = pid
 
+  console.log(`Starting search for 'graphile-migrate' with initial PID: ${pid}`)
+
   while (currentPid && currentPid !== '1') {
-    // Stop when reaching PID 1 or if PID is null
+    console.log(`Checking process with PID: ${currentPid}`)
+
     const command = getProcessCommand(currentPid)
-    if (command && command.includes('graphile-migrate')) {
-      const tokens = command.split(/\s+/)
-      const index = tokens.findIndex((token) =>
-        token.includes('graphile-migrate'),
-      )
-      if (index !== -1 && tokens.length > index + 1) {
-        return {
-          graphileMigratePid: currentPid,
-          command: tokens[index + 1],
+    if (command) {
+      console.log(`Command for PID ${currentPid}: ${command}`)
+      if (command.includes('graphile-migrate')) {
+        const tokens = command.split(/\s+/)
+        const index = tokens.findIndex((token) =>
+          token.includes('graphile-migrate'),
+        )
+        if (index !== -1 && tokens.length > index + 1) {
+          console.log(
+            `'graphile-migrate' found in PID ${currentPid}. Returning command: ${tokens[index + 1]}`,
+          )
+          return {
+            graphileMigratePid: currentPid,
+            command: tokens[index + 1],
+          }
         }
       }
+    } else {
+      console.log(`No command found for PID ${currentPid}`)
     }
     currentPid = getParentPid(currentPid)
   }
 
+  console.log(`'graphile-migrate' not found for initial PID: ${pid}`)
   return null // Return null if 'graphile-migrate' was not found
 }
 
@@ -375,8 +387,8 @@ const ensureDbExists = async (dbConnectionString: string): Promise<boolean> => {
 
   // If dbConnectionString is rootDbUrl, we need to connect to the default postgres db
   assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
-  assert(dbUrl !== undefined, 'DATABASE_URL is required')
-  const urlToUse = dbConnectionString === rootDbUrl ? dbUrl : rootDbUrl
+  assert(appDbUrl !== undefined, 'DATABASE_URL is required')
+  const urlToUse = dbConnectionString === rootDbUrl ? appDbUrl : rootDbUrl
 
   await withClient(urlToUse, async (client) => {
     let exists = false
@@ -452,9 +464,9 @@ const main = async (): Promise<void> => {
   assert(ormDbUrl !== undefined, 'ORM_DATABASE_URL is required')
   assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
   assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
-  assert(dbUrl !== undefined, 'DATABASE_URL is required')
+  assert(appDbUrl !== undefined, 'DATABASE_URL is required')
   await ensureDbExists(rootDbUrl)
-  await ensureDbExists(dbUrl)
+  await ensureDbExists(appDbUrl)
   await ensureDbExists(shadowDbUrl)
   await ensureDbExists(ormDbUrl)
 
@@ -479,7 +491,7 @@ ${schemas
     ${chalk.bold('root database:')} ${prettyDb(rootDbUrl)}
       * This is the database that is used to create other databases.
     
-    ${chalk.bold('app database:')} ${prettyDb(dbUrl)}
+    ${chalk.bold('app database:')} ${prettyDb(appDbUrl)}
       * This is the database that is used by the app.
     
     ${chalk.bold('orm database:')} ${prettyDb(ormDbUrl)}
