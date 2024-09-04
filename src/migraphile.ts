@@ -213,36 +213,24 @@ const findGraphileMigrateCommand = (
 ): { graphileMigratePid: string; command: string } | null => {
   let currentPid: string | null = pid
 
-  console.log(`Starting search for 'graphile-migrate' with initial PID: ${pid}`)
-
   while (currentPid && currentPid !== '1') {
-    console.log(`Checking process with PID: ${currentPid}`)
-
+    // Stop when reaching PID 1 or if PID is null
     const command = getProcessCommand(currentPid)
-    if (command) {
-      console.log(`Command for PID ${currentPid}: ${command}`)
-      if (command.includes('graphile-migrate')) {
-        const tokens = command.split(/\s+/)
-        const index = tokens.findIndex((token) =>
-          token.includes('graphile-migrate'),
-        )
-        if (index !== -1 && tokens.length > index + 1) {
-          console.log(
-            `'graphile-migrate' found in PID ${currentPid}. Returning command: ${tokens[index + 1]}`,
-          )
-          return {
-            graphileMigratePid: currentPid,
-            command: tokens[index + 1],
-          }
+    if (command && command.includes('graphile-migrate')) {
+      const tokens = command.split(/\s+/)
+      const index = tokens.findIndex((token) =>
+        token.includes('graphile-migrate'),
+      )
+      if (index !== -1 && tokens.length > index + 1) {
+        return {
+          graphileMigratePid: currentPid,
+          command: tokens[index + 1],
         }
       }
-    } else {
-      console.log(`No command found for PID ${currentPid}`)
     }
     currentPid = getParentPid(currentPid)
   }
 
-  console.log(`'graphile-migrate' not found for initial PID: ${pid}`)
   return null // Return null if 'graphile-migrate' was not found
 }
 
