@@ -143,6 +143,7 @@ const runMigra = async (from: string, to: string): Promise<string> => {
         from.replace('postgres://', 'postgresql://'),
         to.replace('postgres://', 'postgresql://'),
         '--with-privileges',
+        '--ignore-extension-versions',
         '--unsafe',
         `--schema=${schema.trim()}`, // Use the current schema in the loop
       ]
@@ -375,7 +376,7 @@ const ensureDbExists = async (dbConnectionString: string): Promise<boolean> => {
 
   // If dbConnectionString is rootDbUrl, we need to connect to the default postgres db
   assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
-  assert(appDbUrl !== undefined, 'DATABASE_URL is required')
+  assert(appDbUrl !== undefined, 'APP_DATABASE_URL is required')
   const urlToUse = dbConnectionString === rootDbUrl ? appDbUrl : rootDbUrl
 
   await withClient(urlToUse, async (client) => {
@@ -452,7 +453,7 @@ const main = async (): Promise<void> => {
   assert(ormDbUrl !== undefined, 'ORM_DATABASE_URL is required')
   assert(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required')
   assert(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required')
-  assert(appDbUrl !== undefined, 'DATABASE_URL is required')
+  assert(appDbUrl !== undefined, 'APP_DATABASE_URL is required')
   await ensureDbExists(rootDbUrl)
   await ensureDbExists(appDbUrl)
   await ensureDbExists(shadowDbUrl)

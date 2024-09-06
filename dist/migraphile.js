@@ -137,6 +137,7 @@ const runMigra = (from, to) => __awaiter(void 0, void 0, void 0, function* () {
                 from.replace('postgres://', 'postgresql://'),
                 to.replace('postgres://', 'postgresql://'),
                 '--with-privileges',
+                '--ignore-extension-versions',
                 '--unsafe',
                 `--schema=${schema.trim()}`, // Use the current schema in the loop
             ];
@@ -320,7 +321,7 @@ const ensureDbExists = (dbConnectionString) => __awaiter(void 0, void 0, void 0,
     let wasCreated = false;
     // If dbConnectionString is rootDbUrl, we need to connect to the default postgres db
     (0, assert_1.default)(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required');
-    (0, assert_1.default)(appDbUrl !== undefined, 'DATABASE_URL is required');
+    (0, assert_1.default)(appDbUrl !== undefined, 'APP_DATABASE_URL is required');
     const urlToUse = dbConnectionString === rootDbUrl ? appDbUrl : rootDbUrl;
     yield withClient(urlToUse, (client) => __awaiter(void 0, void 0, void 0, function* () {
         let exists = false;
@@ -382,7 +383,7 @@ const main = () => __awaiter(void 0, void 0, void 0, function* () {
     (0, assert_1.default)(ormDbUrl !== undefined, 'ORM_DATABASE_URL is required');
     (0, assert_1.default)(shadowDbUrl !== undefined, 'SHADOW_DATABASE_URL is required');
     (0, assert_1.default)(rootDbUrl !== undefined, 'ROOT_DATABASE_URL is required');
-    (0, assert_1.default)(appDbUrl !== undefined, 'DATABASE_URL is required');
+    (0, assert_1.default)(appDbUrl !== undefined, 'APP_DATABASE_URL is required');
     yield ensureDbExists(rootDbUrl);
     yield ensureDbExists(appDbUrl);
     yield ensureDbExists(shadowDbUrl);
